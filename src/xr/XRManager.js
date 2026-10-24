@@ -6,6 +6,7 @@ import { XRLocomotionManager } from './XRLocomotionManager.js';
 import { MRPlacementManager } from './MRPlacementManager.js';
 import { SpatialUI } from './SpatialUI.js';
 import { XRPerformanceManager } from './XRPerformanceManager.js';
+import { syncXRViewports } from './XRViewports.js';
 
 const LABELS={vr:'进入 VR 沉浸漫游',mr:'进入 MR 混合现实'};
 
@@ -150,6 +151,7 @@ export class XRManager {
     try{
       const cpuStart=performance.now();
       const pose=frame.getViewerPose(this.referenceSpace);if(!pose){this.previous=0;return;}
+      syncXRViewports(this.renderer,pose);
       const dt=Math.min(this.previous?(now-this.previous)/1000:1/72,.05);this.previous=now;
       if(!this.headInitialized)this.initializeHead(pose);this.trackedHead(pose);
       let inputs=this.inputs.update(frame,this.referenceSpace);let manipulating=false;
