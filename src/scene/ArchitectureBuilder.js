@@ -260,9 +260,10 @@ export class ArchitectureBuilder {
     b.beam([0,-.38-r*1.19,0],[0,-.38-r*1.19-.11,0],.007,m.wood);
     b.flush('Silk lantern');
     const light=new THREE.PointLight(0xffc381,5,4.4,2);light.position.set(0,-.39,.08);pivot.add(light);
+    light.userData.xrCore=Math.abs(x)<.5;
     this.lanterns.push({pivot,phase:this.rng()*8});this.lights.push({light,base:5,phase:this.rng()*8});
   }
   warmLight(x,y,z,intensity,distance) {
-    const light=new THREE.PointLight(0xffc28a,intensity,distance,2);light.position.set(x,y,z);this.scene.add(light);this.lights.push({light,base:intensity,phase:this.rng()*8});return light;
+    const light=new THREE.PointLight(0xffc28a,intensity,distance,2);light.position.set(x,y,z);light.userData.xrCore=intensity>=25;this.scene.add(light);this.lights.push({light,base:intensity,phase:this.rng()*8});return light;
   }
 }

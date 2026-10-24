@@ -5,6 +5,7 @@ import { XRInputSystem } from './XRInputSystem.js';
 import { XRLocomotionManager } from './XRLocomotionManager.js';
 import { MRPlacementManager } from './MRPlacementManager.js';
 import { SpatialUI } from './SpatialUI.js';
+import { XRPerformanceManager } from './XRPerformanceManager.js';
 
 const LABELS={vr:'进入 VR 沉浸漫游',mr:'进入 MR 混合现实'};
 
@@ -16,6 +17,7 @@ export class XRManager {
       exit:()=>this.exit(),home:()=>this.mode==='mr'?this.placement?.reset():this.locomotion?.home(this.head),
       turn:()=>this.secondaryControl(),feedback:s=>this.inputs?.feedback(s),aim:(s,p)=>this.inputs?.aim(s,s.rayOrigin.distanceTo(p),true),
     });
+    this.performance=new XRPerformanceManager(app,this);
     this.head=new THREE.Vector3();this.headRotation=new THREE.Quaternion();this.createEntry();
     this.onDeviceChange=()=>this.detectSupport();navigator.xr?.addEventListener('devicechange',this.onDeviceChange);this.detectSupport();
     const query=new URLSearchParams(location.search);
@@ -58,11 +60,12 @@ export class XRManager {
       this.onSessionEnd=()=>{ended=true;queueMicrotask(()=>{if(this.session===session)this.restore();});};
       session.addEventListener('end',this.onSessionEnd,{once:true});
       this.saveScene();
-      const renderer=new THREE.WebGPURenderer({alpha:true,antialias:true,forceWebGL:!nativeGPU,powerPreference:'high-performance'});this.renderer=renderer;
+      const renderer=new THREE.WebGPURenderer({alpha:true,antialias:false,forceWebGL:!nativeGPU,powerPreference:'high-performance'});this.renderer=renderer;
       renderer.setSize(this.app.host.clientWidth,this.app.host.clientHeight);renderer.setPixelRatio(1);
       renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.45;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
       renderer.domElement.className='xr-canvas';renderer.domElement.setAttribute('aria-label',mode==='vr'?'VR 头显画面':'MR 头显画面');
       await renderer.init();if(ended||epoch!==this.epoch){renderer.dispose();return;}
+      this.performance.bind(renderer);
       const pmrem=new THREE.PMREMGenerator(renderer);this.envTarget=pmrem.fromEquirectangular(this.app.environment);pmrem.dispose();
       this.scene.environment=this.envTarget.texture;
       this.rig=new THREE.Group();this.rig.name='Tracked XR origin';this.scene.add(this.rig);
@@ -83,7 +86,7 @@ export class XRManager {
         this.placement=new MRPlacementManager(this.scene,this.world,{hasFloor,onStatus:text=>this.ui.setStatus(text)});
         await this.placement.start(session,referenceSpace);if(ended||epoch!==this.epoch)return;
       }
-      renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType(type);renderer.xr.setFramebufferScaleFactor(.85);renderer.xr.setFoveation(.4);
+      renderer.xr.enabled=true;renderer.xr.setReferenceSpaceType(type);
       await renderer.setAnimationLoop((now,frame)=>this.animate(now,frame));
       await renderer.xr.setSession(session);if(ended||epoch!==this.epoch){renderer.setAnimationLoop(null);renderer.dispose();return;}
       renderer.xr.setReferenceSpace(referenceSpace);
@@ -101,7 +104,7 @@ export class XRManager {
   }
   setBusy(value){for(const button of Object.values(this.buttons)){button.disabled=value;button.setAttribute('aria-busy',String(value));}}
   saveScene(){
-    const scene=this.scene;this.saved={background:scene.background,backgroundNode:scene.backgroundNode,fogNode:scene.fogNode,environment:scene.environment,floor:this.app.floor.visible};
+    const scene=this.scene;this.saved={background:scene.background,backgroundNode:scene.backgroundNode,fog:scene.fog,fogNode:scene.fogNode,environment:scene.environment,floor:this.app.floor.visible};
     // r186 caches analytic light/shadow nodes globally by Light identity. Give the
     // XR renderer its own lights, so disposal cannot invalidate desktop shadows.
     const originals=[];this.world.traverse(o=>{if(o.isLight)originals.push(o);});
@@ -116,7 +119,7 @@ export class XRManager {
   configureScene(mode){
     this.world.position.set(0,mode==='vr'?-FLOOR_Y:0,0);this.world.quaternion.identity();this.world.scale.setScalar(1);this.world.visible=mode==='vr';this.world.updateMatrixWorld(true);
     this.app.floor.visible=false;this.scene.backgroundNode=null;this.scene.background=mode==='mr'?null:new THREE.Color(0x101b22);
-    this.scene.fogNode=this.app.weather.stereoFogNode();this.renderer?.setClearColor(0x000000,mode==='mr'?0:1);this.ui.setMode(mode);this.updateWorld();
+    this.scene.fogNode=null;this.scene.fog=new THREE.FogExp2(0x0c131c,.045);this.renderer?.setClearColor(0x000000,mode==='mr'?0:1);this.ui.setMode(mode);this.updateWorld();
   }
   updateWorld(){
     this.world.updateMatrixWorld(true);this.app.materials.worldInverse.value.copy(this.world.matrixWorld).invert();
@@ -145,6 +148,7 @@ export class XRManager {
   animate(now,frame){
     if(this.state!=='presenting'||!frame||this.disposed)return;
     try{
+      const cpuStart=performance.now();
       const pose=frame.getViewerPose(this.referenceSpace);if(!pose){this.previous=0;return;}
       const dt=Math.min(this.previous?(now-this.previous)/1000:1/72,.05);this.previous=now;
       if(!this.headInitialized)this.initializeHead(pose);this.trackedHead(pose);
@@ -156,9 +160,9 @@ export class XRManager {
         if(this.placement.placed&&this.world.scale.x>.95&&!manipulating)this.updateMRNavigation(dt,inputs,frame);
       }else {this.locomotion.update(dt,inputs,this.head,this.headRotation);this.trackedHead(pose);inputs=this.inputs.update(frame,this.referenceSpace);}
       if(!this.app.reducedMotion)this.app.elapsed+=dt;
-      this.app.garden.update(this.app.elapsed);this.app.weather.update(this.app.elapsed);this.ui.animateDoors(dt);this.updateWorld();
+      this.ui.animateDoors(dt);this.updateWorld();this.performance.beforeFrame(now,pose,this.head);
       this.ui.update(dt,this.head,this.headRotation,inputs,{placed:this.mode==='vr'||this.placement.placed,manipulating});
-      inputs.forEach(s=>this.inputs.consume(s));this.renderer.render(this.scene,this.camera);this.frames++;
+      inputs.forEach(s=>this.inputs.consume(s));this.renderer.render(this.scene,this.camera);this.frames++;this.performance.afterFrame(performance.now()-cpuStart);
     }catch(error){console.error('Courtyard XR frame failed:',error);this.exit();}
   }
   updateMRNavigation(dt,inputs,frame){
@@ -181,13 +185,14 @@ export class XRManager {
   async exit(){if(this.preview){location.assign(location.pathname);return;}if(this.state==='ending'||this.state==='idle')return;this.state='ending';try{await this.session?.end();}catch{this.restore();}}
   restore(){
     ++this.epoch;const renderer=this.renderer;this.renderer=null;renderer?.setAnimationLoop(null);
+    this.performance.unbind();
     this.referenceSpace?.removeEventListener?.('reset',this.onReferenceReset);this.session?.removeEventListener('end',this.onSessionEnd);
     this.inputs?.dispose();this.inputs=null;this.placement?.dispose();this.placement=null;this.locomotion?.dispose();this.locomotion=null;this.rig?.removeFromParent();this.rig=null;
     this.world.position.set(0,0,0);this.world.quaternion.identity();this.world.scale.setScalar(1);this.world.visible=true;this.world.updateMatrixWorld(true);this.app.materials.worldInverse.value.identity();
     this.ui.setMode(null);this.ui.status.visible=false;this.app.renderer.domElement.style.visibility='';this.entry.hidden=false;this.setBusy(false);
     for(const data of this.lightState||[]){data.original.visible=data.visible;data.original.intensity=data.intensity;data.light.removeFromParent();data.light.dispose();}
     this.lightState=[];this.shadowScale=null;
-    if(this.saved){Object.assign(this.scene,{background:this.saved.background,backgroundNode:this.saved.backgroundNode,fogNode:this.saved.fogNode,environment:this.saved.environment});this.app.floor.visible=this.saved.floor;this.saved=null;}
+    if(this.saved){Object.assign(this.scene,{background:this.saved.background,backgroundNode:this.saved.backgroundNode,fog:this.saved.fog,fogNode:this.saved.fogNode,environment:this.saved.environment});this.app.floor.visible=this.saved.floor;this.saved=null;}
     this.envTarget?.dispose();this.envTarget=null;renderer?.domElement.remove();renderer?.dispose();
     for(const door of this.app.architecture.doors){door.targetAngle=door.restAngle;door.group.rotation.y=door.restAngle;door.open=true;}
     this.session=null;this.mode=null;this.state='idle';this.app.previous=0;
@@ -215,6 +220,6 @@ export class XRManager {
   updatePreview(dt){
     this.app.camera.getWorldPosition(this.head);this.app.camera.getWorldQuaternion(this.headRotation);this.ui.update(dt,this.head,this.headRotation,[],{gaze:false});this.ui.animateDoors(dt);this.updateWorld();
   }
-  diagnostics(){return {state:this.state,mode:this.mode,preview:!!this.preview,support:{...this.support},backend:this.renderer?(this.renderer.backend.isWebGPUBackend?'WebGPU':'WebGL2'):null,features:Array.from(this.session?.enabledFeatures||[]),frames:this.frames,scale:this.world.scale.x,placed:this.placement?.placed??false,anchor:this.placement?.anchorState??null,surfaces:this.placement?.surfaceMap.size??0,turn:this.locomotion?.turnMode??'snap'};}
-  dispose(){this.disposed=true;clearTimeout(this.noticeTimer);navigator.xr?.removeEventListener('devicechange',this.onDeviceChange);this.app.renderer.domElement.removeEventListener('pointerup',this.onPreviewPointer);this.session?.end().catch(()=>{});this.restore();this.ui.dispose();this.entry.remove();}
+  diagnostics(){return {state:this.state,mode:this.mode,preview:!!this.preview,support:{...this.support},backend:this.renderer?(this.renderer.backend.isWebGPUBackend?'WebGPU':'WebGL2'):null,features:Array.from(this.session?.enabledFeatures||[]),frames:this.frames,scale:this.world.scale.x,placed:this.placement?.placed??false,anchor:this.placement?.anchorState??null,surfaces:this.placement?.surfaceMap.size??0,turn:this.locomotion?.turnMode??'snap',performance:this.performance.diagnostics()};}
+  dispose(){this.disposed=true;clearTimeout(this.noticeTimer);navigator.xr?.removeEventListener('devicechange',this.onDeviceChange);this.app.renderer.domElement.removeEventListener('pointerup',this.onPreviewPointer);this.session?.end().catch(()=>{});this.restore();this.performance.dispose();this.ui.dispose();this.entry.remove();}
 }

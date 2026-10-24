@@ -1,5 +1,6 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { color, mix, normalLocal, texture } from 'three/tsl';
 
 export const EXHIBITS=[
   {id:'eaves',seal:'水',title:'四水归堂与灰瓦滴水',english:'RAIN / EAVES',position:[-.82,1.42,-.60],
@@ -78,7 +79,7 @@ export class SpatialUI {
     const m=this.material({map:tex,roughness:.93,emissive:0xffffff,emissiveMap:tex,emissiveIntensity:.7});
     const face=new THREE.Mesh(new THREE.PlaneGeometry(1.25,.8125),m);face.position.z=.055;board.add(face);
     this.box(node,.008,.22,.008,this.edge,0,.22,-.016,.001);
-    item.board=board;item.action=()=>{item.open=!item.open;board.visible=item.open;if(item.open)board.scale.setScalar(.72);};this.items.push(item);
+    item.board=board;item.action=()=>{item.open=!item.open;board.visible=item.open;if(item.open){for(const other of this.items)if(other!==item&&other.board){other.open=false;other.board.visible=false;}board.scale.setScalar(.72);}};this.items.push(item);
   }
   addControls(){
     const dock=new THREE.Group();dock.position.set(-1.28,1.35,3.35);this.group.add(dock);this.dock=dock;
@@ -111,6 +112,37 @@ export class SpatialUI {
     for(const [i,label]of (mode==='mr'?['重放','微缩','退出']:['归位','瞬转','退出']).entries()){
       const mesh=this.controls[i].cap.children[0];const tex=canvasTexture(labelCanvas(label,1024,588));
       const old=mesh.material.map;this.textures.splice(this.textures.indexOf(old),1);old.dispose();this.textures.push(tex);mesh.material.map=tex;mesh.material.emissiveMap=tex;mesh.material.needsUpdate=true;
+    }
+  }
+  setPerformanceMode(enabled){
+    if(enabled){
+      this.performanceDecorations=[];this.performanceCoatings=[];
+      for(const root of [this.group,this.status])root.traverse(o=>{
+        if(!o.isMesh)return;
+        if([this.wood,this.edge,this.dark].includes(o.material)){this.performanceDecorations.push([o,o.visible]);o.visible=false;}
+        // Interactive surfaces remain three-dimensional; decorative backing layers
+        // are culled, and the UI never invalidates the frozen courtyard shadow map.
+        this.performanceCoatings.push([o,o.castShadow]);o.castShadow=false;
+      });
+      this.savedClearcoat=this.materials.map(m=>[m,m.clearcoat]);
+      for(const [m]of this.savedClearcoat){m.clearcoat=0;m.needsUpdate=true;}
+      this.performanceCaps=[];
+      for(const item of this.items){
+        const label=item.cap.children[0],sample=texture(label.material.map);
+        const ink=sample.a.mul(normalLocal.z.greaterThan(.8).select(1,0));
+        const material=new THREE.MeshStandardNodeMaterial({roughness:.3});
+        material.colorNode=mix(color(0x637f73),sample.rgb,ink);
+        material.emissiveNode=mix(color(0x294438).mul(.2),sample.rgb.mul(.8),ink);
+        this.performanceCaps.push([item.cap,item.cap.material,material]);
+        this.performanceDecorations.push([label,label.visible]);label.visible=false;item.cap.material=material;
+      }
+    }else{
+      for(const [mesh,visible]of this.performanceDecorations||[])mesh.visible=visible;
+      for(const [mesh,castShadow]of this.performanceCoatings||[])mesh.castShadow=castShadow;
+      for(const [m,clearcoat]of this.savedClearcoat||[]){m.clearcoat=clearcoat;m.needsUpdate=true;}
+      for(const [cap,original,material]of this.performanceCaps||[]){cap.material=original;material.dispose();}
+      this.performanceCaps=[];
+      this.performanceDecorations=[];this.performanceCoatings=[];this.savedClearcoat=[];
     }
   }
   warmAudio(){

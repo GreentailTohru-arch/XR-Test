@@ -30,7 +30,7 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Test XR interactions
+      - name: Test XR interactions and performance switching
         run: npm test
       - name: Build website
         run: npm run build -- --base=/XR-Test/

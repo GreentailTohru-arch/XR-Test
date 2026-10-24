@@ -76,6 +76,8 @@ export class TSLMaterials {
       m.roughnessNode=mix(.21,.34,streak);
     }
     m.normalNode=normalMap(texture(t.normal,normalUV),vec2(options.normalScale??.5));
+    // Source textures are reused when baking the lightweight XR material atlas.
+    m.userData.xrSurface={kind,textures:t,...options};
     return m;
   }
 

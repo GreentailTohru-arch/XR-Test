@@ -11,9 +11,9 @@ export class XRInputSystem {
   constructor(scene,rig) {
     this.scene=scene;this.rig=rig;this.states=new Map();this.listeners=[];
     this.materials={
-      wood:new THREE.MeshPhysicalNodeMaterial({color:0x292c28,roughness:.56,clearcoat:.25}),
-      gold:new THREE.MeshPhysicalNodeMaterial({color:0xc7a56b,metalness:.35,roughness:.4,emissive:0x8a5825,emissiveIntensity:.35}),
-      hand:new THREE.MeshPhysicalNodeMaterial({color:0x889d8e,roughness:.55,transparent:true,opacity:.7}),
+      wood:new THREE.MeshStandardNodeMaterial({color:0x292c28,roughness:.56}),
+      gold:new THREE.MeshStandardNodeMaterial({color:0xc7a56b,metalness:.35,roughness:.4,emissive:0x8a5825,emissiveIntensity:.35}),
+      hand:new THREE.MeshStandardNodeMaterial({color:0x889d8e,roughness:.55,transparent:true,opacity:.7}),
       ray:new THREE.LineBasicNodeMaterial({color:0xe0b77d,transparent:true,opacity:.24,depthWrite:false}),
     };
     this.sphere=new THREE.SphereGeometry(1,8,6);

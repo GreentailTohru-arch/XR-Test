@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { snapshotGrab, solveGrab, floorAlignedPosition, FLOOR_Y } from './XRMath.js';
 
 export class MRPlacementManager {
@@ -6,7 +7,7 @@ export class MRPlacementManager {
     Object.assign(this,{scene,world,onStatus});this.hasFloor=hasFloor;this.floorY=hasFloor?0:null;this.placed=false;this.epoch=0;this.anchor=null;this.anchorOffset=null;this.grab=null;this.surfaceMap=new Map();this.hit=null;
     this.room=new THREE.Group();this.room.name='Device-detected real surfaces';scene.add(this.room);
     this.reticle=new THREE.Group();this.reticle.name='MR placement ring';scene.add(this.reticle);this.reticle.visible=false;
-    const gold=new THREE.MeshBasicNodeMaterial({color:0xd6b477,side:THREE.DoubleSide,transparent:true,opacity:.85,depthWrite:false});
+    const gold=new THREE.MeshBasicNodeMaterial({color:0xd6b477,side:THREE.DoubleSide,transparent:true,opacity:.85,depthWrite:false,forceSinglePass:true});
     for(const r of [.12,.16]){const mesh=new THREE.Mesh(new THREE.RingGeometry(r,r+.004,64),gold);mesh.rotation.x=-Math.PI/2;this.reticle.add(mesh);}
     for(let i=0;i<4;i++){
       const mark=new THREE.Group();mark.rotation.y=i*Math.PI/2;
@@ -14,6 +15,10 @@ export class MRPlacementManager {
         const bar=new THREE.Mesh(new THREE.BoxGeometry(w,.003,d),gold);bar.position.set(x,0,z);mark.add(bar);
       }this.reticle.add(mark);
     }
+    // The placement ring and twelve corner bars share one draw per eye.
+    this.reticle.updateMatrixWorld(true);const parts=[];
+    this.reticle.traverse(o=>{if(o.isMesh){const g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();g.applyMatrix4(o.matrixWorld);parts.push(g);o.geometry.dispose();}});
+    this.reticle.clear();this.reticle.add(new THREE.Mesh(mergeGeometries(parts,false),gold));parts.forEach(g=>g.dispose());
     this.scanMaterial=new THREE.MeshBasicNodeMaterial({color:0xc3ab7a,side:THREE.DoubleSide,transparent:true,opacity:.035,depthWrite:false});
     this.occlusionMaterial=new THREE.MeshBasicNodeMaterial({colorWrite:false,depthWrite:true,side:THREE.DoubleSide});
     this.scanLineMaterial=new THREE.LineBasicNodeMaterial({color:0xc4aa76,transparent:true,opacity:.22,depthWrite:false});

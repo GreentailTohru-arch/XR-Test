@@ -73,7 +73,7 @@ export class SceneManager {
   }
   lighting() {
     this.world.add(new THREE.HemisphereLight(0x9aafc2,0x32372a,1.45));
-    const moon=new THREE.DirectionalLight(0xb1c8de,2.65);moon.position.set(-5,12,4);moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);
+    const moon=new THREE.DirectionalLight(0xb1c8de,2.65);moon.name='Moon';moon.position.set(-5,12,4);moon.castShadow=true;moon.shadow.mapSize.set(2048,2048);
     Object.assign(moon.shadow.camera,{left:-9,right:9,top:9,bottom:-9,near:.5,far:32});moon.shadow.bias=-.0003;moon.shadow.normalBias=.035;moon.shadow.radius=3;this.world.add(moon,moon.target);
     const edge=new THREE.DirectionalLight(0x9db2c1,.75);edge.position.set(5,7,-6);this.world.add(edge,edge.target);
     // Broad warm bounce under the open eaves, rather than a point source washing the entire courtyard.
@@ -113,7 +113,9 @@ export class SceneManager {
     const delta=Math.min(actualFrameMs/1000,.05);this.previous=now;
     if(!this.reducedMotion)this.elapsed+=delta;
     this.controls.update();this.garden.update(this.elapsed);this.weather.update(this.elapsed);
-    if(this.xr?.preview){this.xr.updatePreview(delta);this.renderer.render(this.scene,this.camera);}else this.pipeline.render();this.frameCount++;
+    if(this.xr?.preview){this.xr.updatePreview(delta);this.renderer.render(this.scene,this.camera);}
+    else if(this.renderer.xr.isPresenting)this.renderer.render(this.scene,this.camera);
+    else this.pipeline.render();this.frameCount++;
     if(this.frameCount%60===0){
       const canvas=this.renderer.domElement;
       canvas.dataset.frames=String(this.frameCount);
@@ -131,7 +133,7 @@ export class SceneManager {
     this.xr?.dispose();
     this.renderer?.domElement.removeEventListener('dblclick',this.onDoubleClick);this.renderer?.domElement.removeEventListener('keydown',this.onKey);
     this.weather?.dispose();this.materials?.dispose();
-    this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();});
+    this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose();o.userData.xrGeometry?.dispose();});
     this.floor?.material.dispose();this.envTarget?.dispose();this.environment?.dispose();
     this.effects&&Object.values(this.effects).forEach(e=>e.dispose?.());this.beauty?.dispose();this.pipeline?.dispose();this.renderer?.dispose();
   }

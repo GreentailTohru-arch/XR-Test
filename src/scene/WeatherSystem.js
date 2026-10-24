@@ -5,27 +5,34 @@ import { random } from './Geometry.js';
 export class WeatherSystem {
   constructor(scene,materials,architecture,compact=false) {
     this.scene=scene;this.materials=materials;this.architecture=architecture;this.resources=[];
-    this.rain(compact?650:1450);this.drips();
+    this.rainOrigin=uniform(new THREE.Vector3());
+    this.rain(compact?650:1450);this.rain(380,true);this.drips();
   }
-  rain(count) {
+  rain(count,local=false) {
     const rng=random(87),quad=new THREE.PlaneGeometry(.009,.16),g=new THREE.InstancedBufferGeometry();
     g.index=quad.index;g.attributes.position=quad.attributes.position;g.attributes.uv=quad.attributes.uv;g.attributes.normal=quad.attributes.normal;
     const values=new Float32Array(count*3),speeds=new Float32Array(count);
-    for(let i=0;i<count;i++){values.set([(rng()-.5)*10.6,rng()*8,(rng()-.5)*10.6],i*3);speeds[i]=.8+rng()*.45;}
+    for(let i=0;i<count;i++){
+      if(local){const angle=rng()*Math.PI*2,radius=Math.sqrt(rng())*3.8;values.set([Math.cos(angle)*radius,rng()*8,Math.sin(angle)*radius],i*3);}
+      else values.set([(rng()-.5)*10.6,rng()*8,(rng()-.5)*10.6],i*3);
+      speeds[i]=.8+rng()*.45;
+    }
     g.setAttribute('rainOrigin',new THREE.InstancedBufferAttribute(values,3));g.setAttribute('rainSpeed',new THREE.InstancedBufferAttribute(speeds,1));g.instanceCount=count;
     const origin=attribute('rainOrigin','vec3'),speed=attribute('rainSpeed','float'),t=this.materials.clock;
-    const y=origin.y.sub(t.mul(3.7).mul(speed)).mod(7.7).add(.4);
-    const x=origin.x.add(y.mul(.065));
+    const center=local?this.rainOrigin:vec3(0);
+    const y=origin.y.sub(t.mul(3.7).mul(speed)).mod(7.7).add(.4).add(center.y);
+    const x=origin.x.add(local?0:y.mul(.065)).add(center.x),z=origin.z.add(center.z);
     const m=new THREE.MeshBasicNodeMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,color:0x94adba});
-    m.positionNode=positionLocal.add(vec3(x,y,origin.z));
+    m.positionNode=positionLocal.add(vec3(x,y,z));
     const axis=smoothstep(0,.18,uv().x).mul(smoothstep(1,.82,uv().x));
     const ends=sin(uv().y.mul(Math.PI)).mul(.22);
     // Rain below the main roof and covered gallery is explicitly masked out.
-    const hall=origin.z.lessThan(-1.02).and(origin.z.greaterThan(-5.3)).and(origin.x.abs().lessThan(4.9)).and(y.lessThan(4.35));
-    const gallery=origin.x.lessThan(-1.8).and(origin.x.greaterThan(-5.1)).and(origin.z.greaterThan(-1.5)).and(origin.z.lessThan(1.38)).and(y.lessThan(3.7));
-    const bounds=x.abs().lessThan(5.25).and(origin.z.abs().lessThan(5.25));
+    const hall=z.lessThan(-1.02).and(z.greaterThan(-5.3)).and(x.abs().lessThan(4.9)).and(y.lessThan(4.35));
+    const gallery=x.lessThan(-1.8).and(x.greaterThan(-5.1)).and(z.greaterThan(-1.5)).and(z.lessThan(1.38)).and(y.lessThan(3.7));
+    const bounds=x.abs().lessThan(5.25).and(z.abs().lessThan(5.25));
     m.opacityNode=axis.mul(ends).mul(hall.or(gallery).select(0,1)).mul(bounds.select(1,0));
-    const mesh=new THREE.Mesh(g,m);mesh.frustumCulled=false;mesh.name='GPU instanced fine rain';mesh.renderOrder=4;this.scene.add(mesh);this.resources.push({mesh,g,m});
+    const mesh=new THREE.Mesh(g,m);mesh.frustumCulled=false;mesh.name=local?'XR local rain cylinder':'GPU instanced fine rain';mesh.renderOrder=4;this.scene.add(mesh);this.resources.push({mesh,g,m});
+    if(local){this.localRain=mesh;mesh.visible=false;}else this.desktopRain=mesh;
   }
   drips() {
     const rng=random(62),origins=[];
@@ -37,7 +44,7 @@ export class WeatherSystem {
     const m=new THREE.MeshBasicNodeMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,color:0xb1c1c4});
     m.positionNode=positionLocal.add(vec3(origin.x,origin.y.sub(fall.pow(2).mul(origin.y.sub(.47))),origin.z.add(fall.mul(.03))));
     m.opacityNode=sin(uv().y.mul(Math.PI)).mul(.43).mul(smoothstep(0,.03,fall));
-    const mesh=new THREE.Mesh(g,m);mesh.frustumCulled=false;mesh.name='Falling eave droplets';mesh.renderOrder=4;this.scene.add(mesh);this.resources.push({mesh,g,m});
+    const mesh=new THREE.Mesh(g,m);mesh.frustumCulled=false;mesh.name='Falling eave droplets';mesh.renderOrder=4;this.scene.add(mesh);this.resources.push({mesh,g,m});this.eaveDrips=mesh;
   }
 
   // Integrate a bounded, height-dependent fog volume along the actual camera ray.
@@ -63,8 +70,14 @@ export class WeatherSystem {
     })();
   }
   update(t) {
+    if(this.xrActive)return;
     for(const {pivot,phase}of this.architecture.lanterns){pivot.rotation.z=Math.sin(t*.67+phase)*.012;pivot.rotation.x=Math.sin(t*.49+phase)*.008;}
     for(const {light,base,phase}of this.architecture.lights)light.intensity=base*(1+Math.sin(t*.43+phase)*.014+Math.sin(t*.71+phase)*.008);
+  }
+  setXRActive(enabled){this.xrActive=enabled;this.desktopRain.visible=!enabled;this.localRain.visible=enabled;this.eaveDrips.visible=true;}
+  updateXR(head,{inside=false,rain=380,miniature=false}={}){
+    this.rainOrigin.value.set(miniature?0:head.x,miniature?0:Math.max(0,head.y-1.65),miniature?0:head.z);
+    this.localRain.geometry.instanceCount=rain;this.localRain.visible=!inside;this.eaveDrips.visible=!inside;
   }
   // Uses each eye's camera position, without a monoscopic screen-space render pass.
   stereoFogNode() {
