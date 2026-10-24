@@ -1,3 +1,8 @@
+export const XR_RENDERING = Object.freeze({
+  vr:Object.freeze({framebufferScale:1,foveation:0,samples:4}),
+  mr:Object.freeze({framebufferScale:.8,foveation:1,samples:0}),
+});
+
 export const XR_QUALITY = Object.freeze([
   {name:'performance',rain:300,viewport:.7,animationHz:15},
   {name:'balanced',rain:340,viewport:.85,animationHz:24},

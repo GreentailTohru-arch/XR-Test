@@ -41,7 +41,7 @@ test('XR pottery and rock geometry reduce segments while preserving desktop geom
   mesh.geometry.dispose();mesh.userData.xrGeometry.dispose();stone.dispose();mat.dispose();
 });
 
-function fixture(){
+function fixture(mode='vr'){
   const scene=new Scene(),world=new Group();scene.add(world);
   const fog=new FogExp2(0xffffff,.01);scene.fog=fog;
   const doors=[{group:new Group()}];world.add(doors[0].group);
@@ -50,7 +50,7 @@ function fixture(){
   const lightState=lights.map((light,i)=>({light,original:{userData:{xrCore:i>=3&&i<=5}}}));
   const calls={enable:0,disable:0,garden:0,ui:[],weather:[]};
   const app={scene,world,elapsed:1,architecture:{doors},garden:{update:()=>calls.garden++},weather:{setXRActive:v=>calls.weather.push(v),updateXR:()=>{}}};
-  const xr={lightState,session:{frameRate:72},ui:{setPerformanceMode:v=>calls.ui.push(v)}};
+  const xr={mode,lightState,session:{frameRate:72},ui:{setPerformanceMode:v=>calls.ui.push(v)}};
   const p=new XRPerformanceManager(app,xr);
   p.optimizer={enable:()=>calls.enable++,disable:()=>calls.disable++,atlas:{clock:{value:0}}};p.halos={visible:false};p.haloScale={value:1};
   const events=new EventDispatcher(),hardware=[];
@@ -61,14 +61,37 @@ function fixture(){
 
 test('XR events apply hardware settings before entry and restore fog/effects exactly once',()=>{
   const {p,app,calls,events,hardware,fog,xr}=fixture();
-  assert.deepEqual(hardware,[['pixels',1],['scale',.8],['foveation',1]]);
+  assert.deepEqual(hardware,[['pixels',1],['scale',1],['foveation',0]]);
   events.dispatchEvent({type:'sessionstart'});events.dispatchEvent({type:'sessionstart'});
+  assert.deepEqual(hardware.at(-1),['foveation',0]);
   assert.equal(calls.enable,1);assert.equal(app.scene.fog.density,.045);
   assert.equal(xr.lightState.filter(d=>d.light.isDirectionalLight&&d.light.visible).length,1);
   assert.equal(xr.lightState.filter(d=>d.light.isPointLight&&d.light.visible).length,3);
   assert.equal(xr.lightState[1].light.shadow.autoUpdate,false);assert.equal(xr.lightState[1].light.shadow.mapSize.x,1024);
   events.dispatchEvent({type:'sessionend'});p.unbind();
   assert.equal(calls.disable,1);assert.equal(app.scene.fog,fog);assert.deepEqual(calls.ui,[true,false]);assert.deepEqual(calls.weather,[true,false]);
+});
+
+test('sustained slow VR frames reduce effects without blurring either eye; MR keeps its adaptive budget',()=>{
+  for(const mode of ['vr','mr']){
+    const {p,events,hardware}=fixture(mode);events.dispatchEvent({type:'sessionstart'});
+    const requested=[[],[]],pose={views:requested.map(values=>({requestViewportScale:scale=>values.push(scale)}))};
+    p.lastCPU=20;
+    for(let time=30;time<12000;time+=30)p.beforeFrame(time,pose,new Vector3(0,2,2));
+    assert.equal(p.policy.level,0,'effect detail should still adapt to sustained missed deadlines');
+    assert.equal(p.policy.profile.rain,300);assert.equal(p.policy.profile.animationHz,15);
+    for(const values of requested){
+      if(mode==='vr')assert.deepEqual([...new Set(values)],[1]);
+      else assert.deepEqual([...new Set(values)],[1,.85,.7]);
+    }
+    const d=p.diagnostics();
+    assert.equal(d.viewportScale,mode==='vr'?1:.7);
+    assert.equal(d.framebufferScale,mode==='vr'?1:.8);
+    assert.equal(d.foveation,mode==='vr'?0:1);
+    assert.equal(d.samples,mode==='vr'?4:0);
+    assert.equal(hardware.filter(([setting])=>setting==='scale').length,1,'never resize the framebuffer inside a session');
+    p.unbind();
+  }
 });
 
 test('static XR frames do not refresh shadows, moving doors refresh once after settling',()=>{

@@ -1,18 +1,18 @@
 import * as THREE from 'three/webgpu';
 import { attribute, positionLocal, modelViewMatrix, cameraProjectionMatrix, vec3, vec4, uv, smoothstep, uniform } from 'three/tsl';
 import { XRSceneOptimizer } from './XRSceneOptimizer.js';
-import { XRQualityPolicy, isInsideHall, preferredRefreshRate } from './XRQualityPolicy.js';
+import { XRQualityPolicy, XR_RENDERING, isInsideHall, preferredRefreshRate } from './XRQualityPolicy.js';
 
 export class XRPerformanceManager {
   constructor(app,xr){
-    this.app=app;this.xr=xr;this.policy=new XRQualityPolicy();this.localHead=new THREE.Vector3();
+    this.app=app;this.xr=xr;this.policy=new XRQualityPolicy();this.settings=XR_RENDERING.vr;this.localHead=new THREE.Vector3();
     this.lastTransform=new THREE.Matrix4();this.active=false;this.drawCalls=0;this.maxDrawCalls=0;
     this.onStart=()=>this.activate();this.onEnd=()=>this.deactivate();
   }
   bind(renderer){
-    this.unbind();this.renderer=renderer;
+    this.unbind();this.renderer=renderer;this.settings=XR_RENDERING[this.xr.mode]||XR_RENDERING.vr;
     // Three.js allocates XR layers during setSession: this must happen BEFORE it.
-    renderer.setPixelRatio(1);renderer.xr.setFramebufferScaleFactor(.8);renderer.xr.setFoveation(1);
+    renderer.setPixelRatio(1);renderer.xr.setFramebufferScaleFactor(this.settings.framebufferScale);renderer.xr.setFoveation(this.settings.foveation);
     renderer.xr.addEventListener('sessionstart',this.onStart);renderer.xr.addEventListener('sessionend',this.onEnd);
     this.optimizer??=new XRSceneOptimizer(this.app);
     this.createHalos();
@@ -38,7 +38,7 @@ export class XRPerformanceManager {
     if(this.active)return;this.active=true;
     // Apply again after the projection/base layer exists (r186 caches the value
     // before allocation but does not set fixedFoveation on the new layer).
-    this.renderer.xr.setFoveation(1);
+    this.renderer.xr.setFoveation(this.settings.foveation);
     const scene=this.app.scene;
     this.saved={fog:scene.fog,fogNode:scene.fogNode};scene.fogNode=null;scene.fog=new THREE.FogExp2(0x0c131c,.045);
     this.optimizer.enable();this.halos.visible=true;this.app.weather.setXRActive(true);this.xr.ui.setPerformanceMode(true);
@@ -66,10 +66,10 @@ export class XRPerformanceManager {
     if(session?.frameRate)this.policy.targetHz=session.frameRate;
     this.policy.sample(now,this.lastCPU);
     const profile=this.policy.profile;
-    // Viewport scaling is the optional in-session mechanism; never reallocate the
-    // framebuffer with setFramebufferScaleFactor while the session is presenting.
+    // Preserve VR text and architectural detail even under load. Only MR retains
+    // adaptive viewport scaling; VR adapts rain and animation, not pixel density.
     for(const view of pose.views||[]){
-      if(view.requestViewportScale){try{view.requestViewportScale(profile.viewport);this.viewportScaling=true;}catch{this.viewportScaling=false;}}
+      if(view.requestViewportScale){try{view.requestViewportScale(this.viewportScale);this.viewportScaling=true;}catch{this.viewportScaling=false;}}
     }
     this.localHead.copy(head);this.app.world.worldToLocal(this.localHead);
     this.inside=this.app.world.scale.x>.9&&isInsideHall(this.localHead);
@@ -99,6 +99,7 @@ export class XRPerformanceManager {
     this.deactivate();
     this.renderer?.xr.removeEventListener('sessionstart',this.onStart);this.renderer?.xr.removeEventListener('sessionend',this.onEnd);this.renderer=null;
   }
-  diagnostics(){return {active:this.active,tier:this.policy.profile.name,targetHz:this.policy.targetHz,frameP90Ms:Math.round(this.policy.p90*10)/10,cpuMs:Math.round((this.lastCPU||0)*10)/10,framebufferScale:.8,foveation:1,viewportScale:this.policy.profile.viewport,viewportScaling:this.viewportScaling,rain:this.active?(this.inside?0:this.policy.profile.rain):null,inside:!!this.inside,drawCalls:this.drawCalls,maxDrawCalls:this.maxDrawCalls,shadowRefreshes:this.shadowRefreshes||0,...this.optimizer?.stats};}
+  get viewportScale(){return this.xr.mode==='mr'?this.policy.profile.viewport:1;}
+  diagnostics(){return {active:this.active,tier:this.policy.profile.name,targetHz:this.policy.targetHz,frameP90Ms:Math.round(this.policy.p90*10)/10,cpuMs:Math.round((this.lastCPU||0)*10)/10,framebufferScale:this.settings.framebufferScale,foveation:this.settings.foveation,samples:this.renderer?.samples??this.settings.samples,viewportScale:this.viewportScale,viewportScaling:this.viewportScaling,rain:this.active?(this.inside?0:this.policy.profile.rain):null,inside:!!this.inside,drawCalls:this.drawCalls,maxDrawCalls:this.maxDrawCalls,shadowRefreshes:this.shadowRefreshes||0,...this.optimizer?.stats};}
   dispose(){this.unbind();this.optimizer?.dispose();this.halos?.geometry.dispose();this.halos?.material.dispose();this.halos?.removeFromParent();}
 }

@@ -7,6 +7,7 @@ import { MRPlacementManager } from './MRPlacementManager.js';
 import { SpatialUI } from './SpatialUI.js';
 import { XRPerformanceManager } from './XRPerformanceManager.js';
 import { syncXRViewports } from './XRViewports.js';
+import { XR_RENDERING } from './XRQualityPolicy.js';
 
 const LABELS={vr:'进入 VR 沉浸漫游',mr:'进入 MR 混合现实'};
 
@@ -61,7 +62,8 @@ export class XRManager {
       this.onSessionEnd=()=>{ended=true;queueMicrotask(()=>{if(this.session===session)this.restore();});};
       session.addEventListener('end',this.onSessionEnd,{once:true});
       this.saveScene();
-      const renderer=new THREE.WebGPURenderer({alpha:true,antialias:false,forceWebGL:!nativeGPU,powerPreference:'high-performance'});this.renderer=renderer;
+      const samples=XR_RENDERING[mode].samples;
+      const renderer=new THREE.WebGPURenderer({alpha:true,antialias:samples>0,samples,forceWebGL:!nativeGPU,powerPreference:'high-performance'});this.renderer=renderer;
       renderer.setSize(this.app.host.clientWidth,this.app.host.clientHeight);renderer.setPixelRatio(1);
       renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.45;renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
       renderer.domElement.className='xr-canvas';renderer.domElement.setAttribute('aria-label',mode==='vr'?'VR 头显画面':'MR 头显画面');

@@ -6,7 +6,7 @@ An interactive Jiangnan courtyard in the rain, built with Three.js and Vite. Exp
 
 Drag to orbit, scroll to zoom, or use the VR / MR buttons on a compatible WebXR headset. Immersive features depend on device support.
 
-XR automatically uses adaptive detail, lightweight materials, local rain and batched geometry. Desktop keeps cinematic reflections, fog and bloom.
+XR uses lightweight materials, local rain and batched geometry. VR keeps full resolution and antialiasing while adapting effects. Desktop keeps cinematic reflections, fog and bloom.
 
 ## Development
 

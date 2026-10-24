@@ -34,7 +34,8 @@ function installTestControls(device){
     const raw=Array.from(layer?.viewports?.values()||[]);
     const matches=raw.map(v=>layer.viewportCalls?.some(a=>a[0]===v.x&&a[1]===v.y&&a[2]===v.width&&a[3]===v.height));
     const average=eyes.length?eyes.reduce((sum,c)=>sum+c.matrixWorld.elements[13],0)/eyes.length:null;
-    output.textContent=JSON.stringify({state:xr.state,frames:xr.frames,deviceHeight:device.position.y,headHeight:xr.head.y,eyeHeight:average,rigY:xr.rig?.position.y,scale:xr.world.scale.x,viewportScale:xr.performance.policy.profile.viewport,viewportMatches:matches,errors:window.__xrQA.errors},null,2);
+    const quality=xr.performance.diagnostics();
+    output.textContent=JSON.stringify({state:xr.state,frames:xr.frames,deviceHeight:device.position.y,headHeight:xr.head.y,eyeHeight:average,rigY:xr.rig?.position.y,scale:xr.world.scale.x,tier:quality.tier,framebufferScale:quality.framebufferScale,foveation:quality.foveation,samples:quality.samples,viewportScale:quality.viewportScale,viewportMatches:matches,errors:window.__xrQA.errors},null,2);
   },250);
 }
 
