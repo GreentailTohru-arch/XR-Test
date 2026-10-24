@@ -1,12 +1,12 @@
 export const XR_RENDERING = Object.freeze({
-  vr:Object.freeze({framebufferScale:1,foveation:0,samples:4}),
-  mr:Object.freeze({framebufferScale:.8,foveation:1,samples:0}),
+  vr:Object.freeze({framebufferScale:1,viewportScale:1,foveation:0,samples:4}),
+  mr:Object.freeze({framebufferScale:1,viewportScale:1,foveation:0,samples:4}),
 });
 
 export const XR_QUALITY = Object.freeze([
-  {name:'performance',rain:300,viewport:.7,animationHz:15},
-  {name:'balanced',rain:340,viewport:.85,animationHz:24},
-  {name:'quality',rain:380,viewport:1,animationHz:30},
+  {name:'performance',rain:300,animationHz:15},
+  {name:'balanced',rain:340,animationHz:24},
+  {name:'quality',rain:380,animationHz:30},
 ]);
 
 // A slow frame reduces detail promptly; recovery needs ten healthy windows.

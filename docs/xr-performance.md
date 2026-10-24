@@ -5,11 +5,9 @@ switches on the renderer's `sessionstart` / `sessionend` events and restores the
 original geometry, materials, fog, rain and lights when XR ends or entry fails.
 
 - Direct stereo rendering, native exponential fog and one instanced warm halo pass.
-- VR uses the runtime's full recommended resolution: framebuffer scale `1`,
+- VR and MR use the runtime's full recommended resolution: framebuffer scale `1`,
   viewport scale `1`, fixed foveation `0` and 4-sample MSAA. Pixel ratio stays `1`:
   headset resolution comes from the XR layer, not the desktop canvas size.
-- MR retains framebuffer scale `0.8`, fixed foveation `1` and adaptive viewport
-  scaling. Its antialiasing setting remains unchanged.
 - Four standard materials share a baked 1024 px atlas. No XR transmission,
   clearcoat, procedural fragment noise or ray-marched fog. Pond normals use two
   sine waves; foliage uses one. Wet stone roughness spans `0.03–0.25`.
@@ -25,8 +23,8 @@ original geometry, materials, fog, rain and lights when XR ends or entry fails.
 
 The frame controller targets an available 90 Hz or 72 Hz display rate, lowers
 rain density and animation frequency after sustained missed deadlines, and
-recovers only after ten healthy sampling windows. VR keeps full pixel density
-at every detail tier; only MR also lowers its optional viewport scale.
+recovers only after ten healthy sampling windows. Both modes keep full pixel
+density at every detail tier, including tabletop MR placement and 1:1 scaling.
 Framebuffer size is set **before** entering XR; Three.js does not support changing
 it during a session. Viewport scaling and foveation depend on the runtime.
 See the [Three.js XRManager API](https://threejs.org/docs/pages/XRManager.html).
@@ -40,18 +38,19 @@ shadow work in that frame. The budget is 80 calls, not 80 per eye. Scene geometr
 is reduced from 106 original meshes to 9 XR batches.
 
 The `?xr-emulate=1&xr-viewport=padded` route also checks non-full-height stereo
-viewports. Regression tests cover full VR resolution under sustained load, MR's
-adaptive resolution, and correct bottom-left WebXR viewport alignment.
+viewports. Regression tests cover full VR/MR resolution under sustained load,
+miniature and walk-in scales, and bottom-left WebXR viewport alignment.
 
 On 2026-10-24, browser stereo emulation passed VR indoor/outdoor switching,
 desktop restoration, MR hit-test placement, exhibit opening and two-controller
 scaling from 0.1 to 1.0. The final MR run peaked at 65 draw calls, including both
 eyes and shadow refreshes.
 
-The subsequent clarity update passed 34 tests and the production build. Browser
-emulation confirmed 4-sample MSAA, foveation `0`, aligned eyes, and full VR
-viewport scale after the effects controller reached its lowest tier. MR entry
-and desktop restoration also passed. This does not measure Quest 3 frame rate.
+The clarity updates passed 34 tests and the production build. Browser emulation
+confirmed 4-sample MSAA, foveation `0`, aligned eyes, and full viewport scale at
+the lowest effects tier. MR tabletop placement and two-controller scaling from
+0.1 to 1.0 retained these settings, tracked anchors and a transparent background.
+Desktop restoration also passed. This does not measure Quest 3 frame rate.
 
 Desktop emulation verifies rendering and state restoration, not headset GPU
 performance. Stable 72/90 Hz must be measured on the target headset, including

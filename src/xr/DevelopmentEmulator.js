@@ -87,7 +87,7 @@ function installFramebufferAdapter(){
       // Real runtimes may pack smaller viewports into a larger texture. Mirror
       // their bottom-left crop instead of hiding this case with a full-height eye.
       const scale=scales.get(view.eye)||1;
-      const viewport={x:base.x+Math.floor(base.width*.03),y:Math.floor(base.height*(view.eye==='left'?.04:.08)),width:Math.floor(base.width*.9*scale),height:Math.floor(base.height*.76*scale)};
+      const viewport={x:Math.floor(base.x+base.width*.03),y:Math.floor(base.height*(view.eye==='left'?.04:.08)),width:Math.floor(base.width*.9*scale),height:Math.floor(base.height*.76*scale)};
       this.viewports.set(view.eye,viewport);return viewport;
     }
     get framebuffer(){

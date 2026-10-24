@@ -72,23 +72,20 @@ test('XR events apply hardware settings before entry and restore fog/effects exa
   assert.equal(calls.disable,1);assert.equal(app.scene.fog,fog);assert.deepEqual(calls.ui,[true,false]);assert.deepEqual(calls.weather,[true,false]);
 });
 
-test('sustained slow VR frames reduce effects without blurring either eye; MR keeps its adaptive budget',()=>{
-  for(const mode of ['vr','mr']){
-    const {p,events,hardware}=fixture(mode);events.dispatchEvent({type:'sessionstart'});
+test('VR and MR retain full resolution at miniature and walk-in scales while effects adapt',()=>{
+  for(const mode of ['vr','mr'])for(const scale of [.1,1]){
+    const {p,app,events,hardware}=fixture(mode);events.dispatchEvent({type:'sessionstart'});
+    app.world.scale.setScalar(scale);app.world.updateMatrixWorld(true);
     const requested=[[],[]],pose={views:requested.map(values=>({requestViewportScale:scale=>values.push(scale)}))};
     p.lastCPU=20;
     for(let time=30;time<12000;time+=30)p.beforeFrame(time,pose,new Vector3(0,2,2));
     assert.equal(p.policy.level,0,'effect detail should still adapt to sustained missed deadlines');
     assert.equal(p.policy.profile.rain,300);assert.equal(p.policy.profile.animationHz,15);
-    for(const values of requested){
-      if(mode==='vr')assert.deepEqual([...new Set(values)],[1]);
-      else assert.deepEqual([...new Set(values)],[1,.85,.7]);
-    }
+    for(const values of requested)assert.deepEqual([...new Set(values)],[1]);
     const d=p.diagnostics();
-    assert.equal(d.viewportScale,mode==='vr'?1:.7);
-    assert.equal(d.framebufferScale,mode==='vr'?1:.8);
-    assert.equal(d.foveation,mode==='vr'?0:1);
-    assert.equal(d.samples,mode==='vr'?4:0);
+    assert.equal(d.viewportScale,1);assert.equal(d.framebufferScale,1);
+    assert.equal(d.foveation,0);assert.equal(d.samples,4);
+    assert.deepEqual(hardware,[['pixels',1],['scale',1],['foveation',0],['foveation',0]]);
     assert.equal(hardware.filter(([setting])=>setting==='scale').length,1,'never resize the framebuffer inside a session');
     p.unbind();
   }

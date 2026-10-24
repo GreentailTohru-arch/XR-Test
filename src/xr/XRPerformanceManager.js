@@ -66,8 +66,8 @@ export class XRPerformanceManager {
     if(session?.frameRate)this.policy.targetHz=session.frameRate;
     this.policy.sample(now,this.lastCPU);
     const profile=this.policy.profile;
-    // Preserve VR text and architectural detail even under load. Only MR retains
-    // adaptive viewport scaling; VR adapts rain and animation, not pixel density.
+    // Keep both miniature MR models and walk-in views sharp under load.
+    // Adapt rain and animation detail without reducing either eye's pixel density.
     for(const view of pose.views||[]){
       if(view.requestViewportScale){try{view.requestViewportScale(this.viewportScale);this.viewportScaling=true;}catch{this.viewportScaling=false;}}
     }
@@ -99,7 +99,7 @@ export class XRPerformanceManager {
     this.deactivate();
     this.renderer?.xr.removeEventListener('sessionstart',this.onStart);this.renderer?.xr.removeEventListener('sessionend',this.onEnd);this.renderer=null;
   }
-  get viewportScale(){return this.xr.mode==='mr'?this.policy.profile.viewport:1;}
+  get viewportScale(){return this.settings.viewportScale;}
   diagnostics(){return {active:this.active,tier:this.policy.profile.name,targetHz:this.policy.targetHz,frameP90Ms:Math.round(this.policy.p90*10)/10,cpuMs:Math.round((this.lastCPU||0)*10)/10,framebufferScale:this.settings.framebufferScale,foveation:this.settings.foveation,samples:this.renderer?.samples??this.settings.samples,viewportScale:this.viewportScale,viewportScaling:this.viewportScaling,rain:this.active?(this.inside?0:this.policy.profile.rain):null,inside:!!this.inside,drawCalls:this.drawCalls,maxDrawCalls:this.maxDrawCalls,shadowRefreshes:this.shadowRefreshes||0,...this.optimizer?.stats};}
   dispose(){this.unbind();this.optimizer?.dispose();this.halos?.geometry.dispose();this.halos?.material.dispose();this.halos?.removeFromParent();}
 }
